@@ -1,0 +1,19 @@
+# Local/generated artifacts
+node-profile.json
+engine-readiness.json
+*.benchmark.json
+*.benchmark.csv
+*.log
+*.tmp
+
+# Build outputs if this repo is ever used as a working tree
+build-*/
+.vs/
+CMakeFiles/
+CMakeCache.txt
+
+# Local secrets / machine-specific overrides
+*.key
+*.pem
+.env
+.env.*

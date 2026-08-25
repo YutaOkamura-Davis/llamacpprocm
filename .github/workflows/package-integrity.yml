@@ -1,0 +1,32 @@
+name: package-integrity
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify packaged files
+        shell: pwsh
+        run: .\Test-Package.ps1
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) {
+              $errors += $parseErrors | ForEach-Object { "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)" }
+            }
+          }
+          if ($errors) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }

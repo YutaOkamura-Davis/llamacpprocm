@@ -1,0 +1,14 @@
+# Keep repository checkouts byte-stable across Windows/Linux so SHA256SUMS.txt remains meaningful.
+* text=auto
+
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.ps1   text eol=lf
+*.sh    text eol=lf
+*.patch text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+*.dll binary
+*.exe binary
