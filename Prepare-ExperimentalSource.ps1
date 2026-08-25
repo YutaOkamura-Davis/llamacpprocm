@@ -114,15 +114,30 @@ $dflashPath = Initialize-PinnedClone -Name 'dflash-base' -Repository $DFlashRepo
 $donorPath = Initialize-PinnedClone -Name 'rocmfpx-donor' -Repository $RocmFpxRepo -Commit $RocmFpxCommit
 $hybridPath = Join-Path $workspaceFull 'hybrid'
 
+# Do not clone from dflash-base here. It is intentionally a partial/promisor
+# clone, and cloning from a local partial clone can fail when upload-pack needs
+# objects that were promised by its upstream remote. Build the independent
+# hybrid directly from the canonical DFlash remote instead.
+if (Test-Path -LiteralPath $hybridPath) {
+    $hybridGit = Join-Path $hybridPath '.git'
+    if (-not (Test-Path -LiteralPath $hybridGit)) {
+        # A failed clone can leave a generated, non-repository directory behind.
+        Remove-Item -LiteralPath $hybridPath -Recurse -Force
+    }
+}
+
 if (-not (Test-Path -LiteralPath $hybridPath)) {
     Invoke-Checked -Command 'git' -ArgumentList @(
-        'clone', '--no-hardlinks', $dflashPath, $hybridPath
+        'clone', '--filter=blob:none', '--no-checkout', $DFlashRepo, $hybridPath
     )
     Invoke-Checked -Command 'git' -ArgumentList @(
-        '-C', $hybridPath, 'remote', 'rename', 'origin', 'dflash-local'
+        '-C', $hybridPath, 'fetch', 'origin', $DFlashCommit, '--depth', '1'
     )
     Invoke-Checked -Command 'git' -ArgumentList @(
-        '-C', $hybridPath, 'remote', 'add', 'dflash-upstream', $DFlashRepo
+        '-C', $hybridPath, 'checkout', '--detach', '--force', $DFlashCommit
+    )
+    Invoke-Checked -Command 'git' -ArgumentList @(
+        '-C', $hybridPath, 'remote', 'rename', 'origin', 'dflash-upstream'
     )
     Invoke-Checked -Command 'git' -ArgumentList @(
         '-C', $hybridPath, 'remote', 'add', 'rocmfpx-donor', $RocmFpxRepo
@@ -130,6 +145,22 @@ if (-not (Test-Path -LiteralPath $hybridPath)) {
     Invoke-Checked -Command 'git' -ArgumentList @(
         '-C', $hybridPath, 'checkout', '-B', 'win-rocmfpx-experiment', $DFlashCommit
     )
+} else {
+    $hybridDirty = @(& git -C $hybridPath status --porcelain --untracked-files=no)
+    if ($LASTEXITCODE -ne 0) {
+        throw "git status failed for $hybridPath"
+    }
+    if ($hybridDirty) {
+        throw "$hybridPath has tracked local changes. Refusing to overwrite them."
+    }
+
+    $hybridActual = (& git -C $hybridPath rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "git rev-parse failed for $hybridPath"
+    }
+    if ($hybridActual -ne $DFlashCommit) {
+        throw "Hybrid source is at $hybridActual instead of the expected base $DFlashCommit. Use -ForceRefresh only if you want to discard it."
+    }
 }
 
 $manifest = [ordered]@{
