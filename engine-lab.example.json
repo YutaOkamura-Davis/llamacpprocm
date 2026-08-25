@@ -1,0 +1,17 @@
+[
+  {
+    "name": "dflash-flow-local",
+    "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
+    "model": "local-model"
+  },
+  {
+    "name": "freetoken-flow-native-experimental",
+    "endpoint": "http://127.0.0.1:1919/v1/chat/completions",
+    "model": "model-name"
+  },
+  {
+    "name": "vllm-wsl",
+    "endpoint": "http://127.0.0.1:8000/v1/chat/completions",
+    "model": "model-name"
+  }
+]

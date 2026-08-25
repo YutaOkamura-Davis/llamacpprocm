@@ -1,0 +1,62 @@
+{
+  "Name": "DFlash2 llama.cpp Windows RPC plus runtime lab",
+  "PackageRevision": "4.0.0",
+  "PackageRevisedOn": "2026-08-23",
+  "SourceRepository": "https://github.com/z-lab/llama.cpp-fork.git",
+  "Commit": "7ea40ee98acb416787863aee935dbb99491acad5",
+  "Branch": "dflash2",
+  "LegacyPrebuiltLlamaVersion": "0.1.2-dev",
+  "Platform": "Windows AMD64",
+  "LegacyPrebuiltCompiler": "MSVC 19.44.35227.0",
+  "PrebuiltBackend": "CUDA + RPC",
+  "PrebuiltCudaArchitectures": "89",
+  "PrebuiltPurpose": "Legacy Lenovo RTX 4080 Laptop comparison only; rebuild for revision 4",
+  "PrebuiltCommit": "1deefcca395743049c3820ab8f9b15043f3e9446",
+  "PrebuiltCompatibleWithRevisionBuilds": false,
+  "PrebuiltBinaryUnchangedFromOriginal": true,
+  "BuildType": "Release",
+  "OriginalBuildTime": "2026-08-23T13:00:29.8844755-07:00",
+  "AlternativeRuntimePins": {
+    "FreeTokenOfficialCommit": "184a4f114d00b7805274841488f2906233b5a961",
+    "FreeTokenWindowsRocmFork": "https://github.com/Maxritz/FreeToken-rocm-test.git",
+    "FreeTokenWindowsRocmCommit": "45675e47348a167a9b36ca224ad310c1ee1e34b4",
+    "VllmCudaVersion": "0.27.1",
+    "VllmRocmVersion": "0.27.1",
+    "VllmRocmVariant": "rocm723",
+    "VllmWindowsRocmFork": "https://github.com/charlie12345/vLLM_for_AMD.git",
+    "VllmWindowsRocmCommit": "89f703a1fb1dd583ff976b977d60cf5082532943",
+    "VllmWindowsRocmBaseVersion": "0.26.0",
+    "VllmWindowsRocmPatchSha256": "a39c9b3fcbba743945b88c39671331c204c214fcf13e20de1a16d9841a320ff0",
+    "VllmWindowsCudaRelease": "v0.26.0",
+    "VllmWindowsCudaWheel": "vllm-0.26.0+cu132-cp312-cp312-win_amd64.whl",
+    "VllmWindowsCudaWheelSha256": "3e15c3b8f847b47a87582c9a4451a88b6ab4ecad2d7e44298e3f4d43c7bf0f98"
+  },
+  "OriginalValidation": [
+    "PowerShell parser: pass",
+    "llama-server --version: pass",
+    "local CUDA RPC discovery: pass"
+  ],
+  "RevisionValidation": [
+    "PowerShell parser: 23/23 scripts pass",
+    "Bash syntax: 4/4 WSL payloads pass with Git Bash",
+    "OpenAI endpoint comparator: synthetic concurrency 1/2/4 test pass with JSON and CSV output",
+    "Runtime readiness schema and WSL-not-installed detection: pass",
+    "FreeToken Windows ROCm and WSL installer plan modes: pass",
+    "Pinned FreeToken fork installer audit: three PowerShell parse errors found; v4 wrapper bypasses them with argument-safe native invocations",
+    "vLLM WSL CUDA/ROCm installer plan and launcher dry-run modes: pass",
+    "Native Windows ROCm vLLM adapter: exact three-file patch applies and reverses cleanly at pinned commit; installer plan and guarded launcher dry-run pass",
+    "AMD gfx1151 wheel index: pinned CPython 3.12 Windows Torch 2.11.0, torchvision 0.26.0, and ROCm 7.13 components present",
+    "Native Windows CUDA vLLM installer plan: pass; GitHub release asset name, Ampere/Ada scope, and published SHA-256 recorded; synthetic two-GPU PP/NCCL launcher dry-run pass",
+    "Optimized DFlash source pin retained; RPC and HIP build targets previously inspected at that commit",
+    "Placement planner, controller/worker dry runs, Flow backend comparator, and safety guards retained from revision 3",
+    "All 11 preserved prebuilt EXE/DLL hashes match the user-supplied archive",
+    "Final SHA-256 package verification: manifest regenerated and Test-Package pass"
+  ],
+  "RequiredNodeBuilds": {
+    "AuroraR10": "CUDA SM86 worker at revision 4 DFlash commit",
+    "FlowZ13": "Vulkan and HIP gfx1151 controller builds at revision 4 DFlash commit",
+    "Lenovo7i": "CUDA SM89 controller/worker rebuild at revision 4 DFlash commit"
+  },
+  "ExperimentalQualificationBoundary": "The packaging machine did not have the user's Flow, Lenovo, Aurora, WSL distribution, AMD gfx1151 GPU, NVIDIA CUDA 13 GPU environment, CUDA 13 FreeToken stack, or model weights. Native FreeToken gfx1151, native vLLM gfx1151/CUDA, and WSL GPU execution must pass the included readiness, smoke, benchmark, correctness, and stability gates on the target machines.",
+  "Notes": "All revision 4 DFlash controllers and workers must use the exact same source commit. The unchanged prebuilt SM89 directory is from an older commit and must not join the revision 4 cluster. Alternative engines are isolated OpenAI-compatible endpoints and do not change the DFlash RPC protocol."
+}

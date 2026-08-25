@@ -1,0 +1,108 @@
+diff --git a/env_windows_rocm.cmd b/env_windows_rocm.cmd
+index 3d21ec1da..737abde9a 100644
+--- a/env_windows_rocm.cmd
++++ b/env_windows_rocm.cmd
+@@ -1,6 +1,6 @@
+ @echo off
+ REM =====================================================================
+-REM Shared build environment for native Windows + ROCm (gfx1201 / RDNA4).
++REM DFlash v4 retarget: native Windows + ROCm (gfx1151 / Strix Halo).
+ REM Dot-sourced by build_windows_rocm.cmd and install_windows_rocm.cmd.
+ REM Deliberately has no setlocal: the caller owns the scope.
+ REM
+@@ -35,7 +35,7 @@ set PATH=%ROCM_ROOT%\bin;%ROCM_ROOT%\lib\llvm\bin;%VENV%\Scripts;%PATH%
+ 
+ REM --- vLLM build configuration ----------------------------------------
+ set VLLM_TARGET_DEVICE=rocm
+-set PYTORCH_ROCM_ARCH=gfx1201
++set PYTORCH_ROCM_ARCH=gfx1151
+ if "%MAX_JOBS%"=="" set MAX_JOBS=16
+ 
+ REM setup.py appends $CMAKE_ARGS verbatim, and later -D wins for cache vars,
+@@ -43,7 +43,7 @@ REM so this also overrides the -DROCM_PATH that setup.py derives from torch.
+ set CMAKE_ARGS=-DCMAKE_CXX_COMPILER=%ROCM_ROOT_FWD%/lib/llvm/bin/clang-cl.exe ^
+  -DCMAKE_HIP_COMPILER=%ROCM_ROOT_FWD%/lib/llvm/bin/clang-cl.exe ^
+  -DCMAKE_HIP_PLATFORM=amd ^
+- -DCMAKE_HIP_ARCHITECTURES=gfx1201 ^
++ -DCMAKE_HIP_ARCHITECTURES=gfx1151 ^
+  -DCMAKE_HIP_FLAGS=--rocm-device-lib-path=%ROCM_ROOT_FWD%/lib/llvm/amdgcn/bitcode ^
+  -DROCM_PATH=%ROCM_ROOT_FWD%
+ 
+diff --git a/serve_windows_rocm.cmd b/serve_windows_rocm.cmd
+index 7c9740b75..f6ae215d6 100644
+--- a/serve_windows_rocm.cmd
++++ b/serve_windows_rocm.cmd
+@@ -1,5 +1,5 @@
+ @echo off
+-REM Run `vllm serve` on native Windows + ROCm (gfx1201 / RDNA4).
++REM Run `vllm serve` on native Windows + ROCm (gfx1151 / Strix Halo).
+ REM Usage: serve_windows_rocm.cmd <model> [extra vllm serve args...]
+ setlocal
+ 
+@@ -8,8 +8,9 @@ if not "%VLLM_ROOT%"=="" set "ROCM_VLLM_ROOT=%VLLM_ROOT%"
+ set "VLLM_ROOT="
+ set "VENV=%ROCM_VLLM_ROOT%.venv211"
+ 
+-REM rocBLAS has no tuned gfx1201 kernels; without this bf16/fp16 GEMMs run ~10x slow.
+-set TORCH_BLAS_PREFER_HIPBLASLT=1
++REM Default to hipBLASLt, but let the v4 benchmark wrapper sweep 0 versus 1.
++REM The upstream fork's measured 10x claim applies to gfx1201, not gfx1151.
++if "%TORCH_BLAS_PREFER_HIPBLASLT%"=="" set TORCH_BLAS_PREFER_HIPBLASLT=1
+ 
+ REM Windows has no fork.
+ set VLLM_WORKER_MULTIPROC_METHOD=spawn
+diff --git a/setup_windows_rocm.ps1 b/setup_windows_rocm.ps1
+index 571a9e668..4ca917109 100644
+--- a/setup_windows_rocm.ps1
++++ b/setup_windows_rocm.ps1
+@@ -8,7 +8,7 @@
+     - validates the required Windows, AMD, uv, Git, and Visual Studio setup;
+     - creates or reuses .venv211 with Python 3.12;
+     - installs the pinned AMD ROCm/PyTorch, Triton, and build dependencies;
+-    - probes the AMD GPU through vram_guard.ps1 and requires gfx1201;
++    - probes the AMD GPU through vram_guard.ps1 and requires gfx1151;
+     - builds and editable-installs this vLLM fork; and
+     - performs a second guarded import/device verification.
+ 
+@@ -56,12 +56,12 @@ $ErrorActionPreference = 'Stop'
+ $ProgressPreference = 'SilentlyContinue'
+ 
+ $ExpectedPython = '3.12'
+-$ExpectedGpuArch = 'gfx1201'
++$ExpectedGpuArch = 'gfx1151'
+ $TorchVersion = '2.11.0+rocm7.13.0'
+ $TorchvisionVersion = '0.26.0+rocm7.13.0'
+ $RocmVersion = '7.13.0'
+ $TritonVersion = '3.6.0.post26'
+-$AmdWheelIndex = 'https://repo.amd.com/rocm/whl/gfx120X-all/'
++$AmdWheelIndex = 'https://repo.amd.com/rocm/whl/gfx1151/'
+ 
+ $Root = (Resolve-Path -LiteralPath $PSScriptRoot).Path.TrimEnd('\')
+ $Venv = Join-Path $Root '.venv211'
+@@ -253,7 +253,7 @@ if ($PlanOnly) {
+     Write-Step 'Plan'
+     Write-Host '1. Create or reuse .venv211 with Python 3.12.'
+     Write-Host '2. Install the pinned ROCm 7.13, PyTorch 2.11, and Triton stack.'
+-    Write-Host '3. Run a fail-closed guarded Torch/HIP/gfx1201 probe.'
++    Write-Host '3. Run a fail-closed guarded Torch/HIP/gfx1151 probe.'
+     Write-Host '4. Build the native C++/HIP extensions with clang-cl.'
+     Write-Host '5. Editable-install vLLM and run a guarded import/device probe.'
+     Write-Host "`nPlanOnly completed; no files, packages, GPU contexts, or builds were changed."
+@@ -347,7 +347,7 @@ print(json.dumps(result, sort_keys=True))
+ if architecture_base != '$ExpectedGpuArch':
+     raise SystemExit(
+         f'Expected $ExpectedGpuArch, but Torch reported {architecture}. '
+-        'This setup script only automates the tested R9700/RDNA4 target.'
++        'This v4 adapter only automates the Strix Halo/Ryzen AI MAX+ target.'
+     )
+ "@
+ Invoke-GuardedProbe -Name 'ROCm device verification' -PythonCode $torchProbe
+@@ -398,7 +398,7 @@ print(json.dumps({
+ Invoke-GuardedProbe -Name 'Installed vLLM verification' -PythonCode $installProbe
+ 
+ Write-Step 'Setup complete'
+-Write-Host 'The tested native-Windows ROCm vLLM environment is installed.'
++Write-Host 'The experimental gfx1151 native-Windows ROCm vLLM environment is installed.'
+ Write-Host 'No model was downloaded or launched.'
+ Write-Host 'Next: follow README.md -> Choosing and downloading a model, then use'
+ Write-Host 'vram_guard.ps1 around every serve or benchmark command.'
