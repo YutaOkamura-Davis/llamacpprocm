@@ -43,6 +43,8 @@ function Initialize-PinnedClone {
     )
 
     $path = Join-Path $workspaceFull $Name
+    $newClone = $false
+
     if (-not (Test-Path -LiteralPath $path)) {
         Invoke-Checked -Command 'git' -ArgumentList @(
             'clone',
@@ -51,18 +53,29 @@ function Initialize-PinnedClone {
             $Repository,
             $path
         )
+        $newClone = $true
     }
 
     if (-not (Test-Path -LiteralPath (Join-Path $path '.git'))) {
         throw "$path exists but is not a Git repository."
     }
 
-    $dirty = & git -C $path status --porcelain
-    if ($LASTEXITCODE -ne 0) {
-        throw "git status failed for $path"
-    }
-    if ($dirty) {
-        throw "$path has local changes. Use a clean workspace or -ForceRefresh."
+    # A --no-checkout clone has an intentionally empty worktree. In that state,
+    # git status reports every indexed file as deleted, which is not a user edit.
+    # This also recovers cleanly from a previous run that stopped immediately
+    # after cloning and before the pinned checkout was materialized.
+    $worktreeItems = @(Get-ChildItem -LiteralPath $path -Force -ErrorAction Stop |
+        Where-Object { $_.Name -ne '.git' })
+    $emptyWorktree = $worktreeItems.Count -eq 0
+
+    if (-not $newClone -and -not $emptyWorktree) {
+        $dirty = @(& git -C $path status --porcelain --untracked-files=no)
+        if ($LASTEXITCODE -ne 0) {
+            throw "git status failed for $path"
+        }
+        if ($dirty) {
+            throw "$path has tracked local changes. Use a clean workspace or -ForceRefresh."
+        }
     }
 
     Invoke-Checked -Command 'git' -ArgumentList @(
@@ -70,10 +83,13 @@ function Initialize-PinnedClone {
         'fetch', 'origin', $Commit,
         '--depth', '1'
     )
-    Invoke-Checked -Command 'git' -ArgumentList @(
-        '-C', $path,
-        'checkout', '--detach', $Commit
-    )
+
+    $checkoutArgs = @('-C', $path, 'checkout', '--detach')
+    if ($newClone -or $emptyWorktree) {
+        $checkoutArgs += '--force'
+    }
+    $checkoutArgs += $Commit
+    Invoke-Checked -Command 'git' -ArgumentList $checkoutArgs
 
     $actual = (& git -C $path rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) {
@@ -81,6 +97,14 @@ function Initialize-PinnedClone {
     }
     if ($actual -ne $Commit) {
         throw "Pin verification failed for ${Name}: $actual"
+    }
+
+    $remainingChanges = @(& git -C $path status --porcelain --untracked-files=no)
+    if ($LASTEXITCODE -ne 0) {
+        throw "post-checkout git status failed for $path"
+    }
+    if ($remainingChanges) {
+        throw "$path is not clean after checking out the pinned commit."
     }
 
     return $path
