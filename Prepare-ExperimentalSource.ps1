@@ -45,7 +45,7 @@ function Initialize-PinnedClone {
     Invoke-Checked git @('-C', $path, 'fetch', 'origin', $Commit, '--depth', '1')
     Invoke-Checked git @('-C', $path, 'checkout', '--detach', $Commit)
     $actual = (& git -C $path rev-parse HEAD).Trim()
-    if ($actual -ne $Commit) { throw "Pin verification failed for $Name: $actual" }
+    if ($actual -ne $Commit) { throw "Pin verification failed for ${Name}: $actual" }
     return $path
 }
 
