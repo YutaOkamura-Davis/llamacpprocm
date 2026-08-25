@@ -120,9 +120,21 @@ $hybridPath = Join-Path $workspaceFull 'hybrid'
 # hybrid directly from the canonical DFlash remote instead.
 if (Test-Path -LiteralPath $hybridPath) {
     $hybridGit = Join-Path $hybridPath '.git'
+    $hybridItems = @(Get-ChildItem -LiteralPath $hybridPath -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne '.git' })
+
     if (-not (Test-Path -LiteralPath $hybridGit)) {
         # A failed clone can leave a generated, non-repository directory behind.
         Remove-Item -LiteralPath $hybridPath -Recurse -Force
+    } elseif ($hybridItems.Count -eq 0) {
+        # An early fetch failure can leave only .git. It has no user worktree to
+        # preserve, so discard it and retry from the canonical remote.
+        Remove-Item -LiteralPath $hybridPath -Recurse -Force
+    } else {
+        $hybridHead = & git -C $hybridPath rev-parse --verify HEAD 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $hybridHead) {
+            throw "$hybridPath is an incomplete Git repository with files present. Inspect it before using -ForceRefresh."
+        }
     }
 }
 
