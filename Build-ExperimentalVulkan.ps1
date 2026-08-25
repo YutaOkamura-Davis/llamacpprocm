@@ -2,6 +2,8 @@
 param(
     [string]$HybridPath = (Join-Path $PSScriptRoot 'experiment-source\hybrid'),
     [string]$BuildDirectory,
+    [ValidateSet('Auto', 'Ninja', 'VisualStudio')]
+    [string]$Generator = 'Auto',
     [ValidateRange(1, 256)]
     [int]$Parallel = 16,
     [switch]$Clean
@@ -31,7 +33,7 @@ if (-not $BuildDirectory) {
 }
 $BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
 
-foreach ($tool in 'git', 'cmake', 'ninja') {
+foreach ($tool in 'git', 'cmake') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         throw "Missing required tool: $tool"
     }
@@ -72,6 +74,20 @@ foreach ($line in $environmentLines) {
 }
 $env:VSLANG = '1033'
 
+$hasNinja = [bool](Get-Command ninja -ErrorAction SilentlyContinue)
+$selectedGenerator = switch ($Generator) {
+    'Ninja' {
+        if (-not $hasNinja) {
+            throw 'Generator Ninja was requested, but ninja.exe is not available in PATH.'
+        }
+        'Ninja'
+    }
+    'VisualStudio' { 'Visual Studio 17 2022' }
+    default {
+        if ($hasNinja) { 'Ninja' } else { 'Visual Studio 17 2022' }
+    }
+}
+
 $trackedChanges = @(& git -C $HybridPath status --porcelain --untracked-files=no)
 if ($LASTEXITCODE -ne 0) {
     throw 'git status failed in hybrid tree.'
@@ -84,11 +100,25 @@ if ($Clean -and (Test-Path -LiteralPath $BuildDirectory)) {
     Remove-Item -LiteralPath $BuildDirectory -Recurse -Force
 }
 
+# CMake refuses to reuse a build directory configured with a different generator.
+# Detect that early and tell the user exactly how to recover.
+$cachePath = Join-Path $BuildDirectory 'CMakeCache.txt'
+if (Test-Path -LiteralPath $cachePath -PathType Leaf) {
+    $cacheGenerator = Get-Content -LiteralPath $cachePath |
+        Where-Object { $_ -like 'CMAKE_GENERATOR:INTERNAL=*' } |
+        Select-Object -First 1
+    if ($cacheGenerator) {
+        $existingGenerator = ($cacheGenerator -split '=', 2)[1]
+        if ($existingGenerator -ne $selectedGenerator) {
+            throw "Build directory uses generator '$existingGenerator', but this run selected '$selectedGenerator'. Re-run with -Clean."
+        }
+    }
+}
+
 $cmakeArgs = @(
     '-S', $HybridPath,
     '-B', $BuildDirectory,
-    '-G', 'Ninja',
-    '-DCMAKE_BUILD_TYPE=Release',
+    '-G', $selectedGenerator,
     '-DGGML_VULKAN=ON',
     '-DGGML_RPC=ON',
     '-DLLAMA_CURL=OFF',
@@ -99,20 +129,37 @@ $cmakeArgs = @(
     '-DLLAMA_BUILD_UI=OFF',
     '-DLLAMA_USE_PREBUILT_UI=OFF'
 )
+if ($selectedGenerator -eq 'Ninja') {
+    $cmakeArgs += '-DCMAKE_BUILD_TYPE=Release'
+} else {
+    $cmakeArgs += @('-A', 'x64')
+}
+
+Write-Host "CMake generator: $selectedGenerator"
 Invoke-Checked -Command 'cmake' -ArgumentList $cmakeArgs
 
 $targets = @('llama-cli', 'llama-server', 'llama-bench', 'ggml-rpc-server', 'test-backend-ops')
 $buildArgs = @('--build', $BuildDirectory, '--target') + $targets + @('--parallel', [string]$Parallel)
+if ($selectedGenerator -ne 'Ninja') {
+    $buildArgs += @('--config', 'Release')
+}
 Invoke-Checked -Command 'cmake' -ArgumentList $buildArgs
 
 $head = (& git -C $HybridPath rev-parse HEAD).Trim()
-$binDirectory = Join-Path $BuildDirectory 'bin'
+$binDirectory = if ($selectedGenerator -eq 'Ninja') {
+    Join-Path $BuildDirectory 'bin'
+} else {
+    $releaseBin = Join-Path $BuildDirectory 'bin\Release'
+    if (Test-Path -LiteralPath $releaseBin) { $releaseBin } else { Join-Path $BuildDirectory 'bin' }
+}
 $manifest = [ordered]@{
     BuiltAt = (Get-Date).ToString('o')
     HybridPath = $HybridPath
     Commit = $head
     BuildDirectory = $BuildDirectory
     Backend = 'Vulkan'
+    Generator = $selectedGenerator
+    Configuration = 'Release'
     Targets = $targets
     Glslc = (Get-Command glslc).Source
 }
