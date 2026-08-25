@@ -23,6 +23,56 @@ function Invoke-Checked {
     }
 }
 
+function Enable-VulkanSdk {
+    $existing = Get-Command glslc -ErrorAction SilentlyContinue
+    if ($existing) {
+        return $existing.Source
+    }
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if ($env:VULKAN_SDK) {
+        [void]$candidates.Add($env:VULKAN_SDK)
+    }
+    if ($env:VK_SDK_PATH -and $env:VK_SDK_PATH -ne $env:VULKAN_SDK) {
+        [void]$candidates.Add($env:VK_SDK_PATH)
+    }
+
+    $defaultRoot = 'C:\VulkanSDK'
+    if (Test-Path -LiteralPath $defaultRoot -PathType Container) {
+        $sdkDirs = @(Get-ChildItem -LiteralPath $defaultRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
+        foreach ($sdkDir in $sdkDirs) {
+            [void]$candidates.Add($sdkDir.FullName)
+        }
+    }
+
+    foreach ($sdkRoot in $candidates | Select-Object -Unique) {
+        if (-not $sdkRoot) { continue }
+        $sdkRoot = [IO.Path]::GetFullPath($sdkRoot)
+        $bin = Join-Path $sdkRoot 'Bin'
+        $compiler = Join-Path $bin 'glslc.exe'
+        if (Test-Path -LiteralPath $compiler -PathType Leaf) {
+            $env:VULKAN_SDK = $sdkRoot
+            $env:VK_SDK_PATH = $sdkRoot
+            if (-not (($env:PATH -split ';') -contains $bin)) {
+                $env:PATH = "$bin;$env:PATH"
+            }
+            Write-Host "Vulkan SDK: $sdkRoot"
+            return $compiler
+        }
+    }
+
+    throw @'
+Vulkan glslc was not found.
+
+The pinned DFlash Vulkan build requires the full LunarG Vulkan SDK (the Vulkan runtime/driver alone is not enough).
+Install the Windows x64 Vulkan SDK from:
+  https://vulkan.lunarg.com/sdk/home
+
+The script automatically detects the default C:\VulkanSDK\<version> install path, so after installation you can rerun this command in the same PowerShell window.
+'@
+}
+
 $HybridPath = [IO.Path]::GetFullPath($HybridPath)
 if (-not (Test-Path -LiteralPath (Join-Path $HybridPath '.git'))) {
     throw "Hybrid Git tree not found: $HybridPath. Run Prepare-ExperimentalSource.ps1 first."
@@ -37,19 +87,6 @@ foreach ($tool in 'git', 'cmake') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         throw "Missing required tool: $tool"
     }
-}
-
-if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) {
-    if ($env:VULKAN_SDK) {
-        $vulkanBin = Join-Path $env:VULKAN_SDK 'Bin'
-        $glslc = Join-Path $vulkanBin 'glslc.exe'
-        if (Test-Path -LiteralPath $glslc -PathType Leaf) {
-            $env:PATH = "$vulkanBin;$env:PATH"
-        }
-    }
-}
-if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) {
-    throw 'Vulkan glslc was not found. Install the LunarG Vulkan SDK and reopen PowerShell.'
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -73,6 +110,9 @@ foreach ($line in $environmentLines) {
     }
 }
 $env:VSLANG = '1033'
+
+# Resolve this after VsDevCmd because it can replace PATH values inherited by the shell.
+$glslcPath = Enable-VulkanSdk
 
 $hasNinja = [bool](Get-Command ninja -ErrorAction SilentlyContinue)
 $selectedGenerator = switch ($Generator) {
@@ -136,6 +176,7 @@ if ($selectedGenerator -eq 'Ninja') {
 }
 
 Write-Host "CMake generator: $selectedGenerator"
+Write-Host "glslc: $glslcPath"
 Invoke-Checked -Command 'cmake' -ArgumentList $cmakeArgs
 
 $targets = @('llama-cli', 'llama-server', 'llama-bench', 'ggml-rpc-server', 'test-backend-ops')
@@ -161,7 +202,8 @@ $manifest = [ordered]@{
     Generator = $selectedGenerator
     Configuration = 'Release'
     Targets = $targets
-    Glslc = (Get-Command glslc).Source
+    VulkanSdk = $env:VULKAN_SDK
+    Glslc = $glslcPath
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $BuildDirectory 'BUILD-WIN-VULKAN.json') -Encoding UTF8
 
